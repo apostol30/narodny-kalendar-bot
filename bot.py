@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHANNEL = os.getenv("CHANNEL", "@narodny_kalendar")
 
-# Расписание: 2 цитаты в день — в 12:00 и 18:00
+# Финальное расписание — 15 постов в день
 POST_SCHEDULE = {
+    8: "holiday",
     9: "primeta",
     10: "saint",
     11: "ussr",
@@ -25,10 +26,10 @@ POST_SCHEDULE = {
     16: "lunar",
     17: "primeta",
     18: "quote_evening",
-    19: "ussr",
-    20: "lunar",
-    21: "primeta",
-    22: "saint"
+    19: "quiz",
+    20: "evening_prayer",
+    21: "proverb",
+    22: "saint_tomorrow"
 }
 
 async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
@@ -47,20 +48,20 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🌾 Народный календарь\n\n"
-        "Публикация: каждый час с 9:00 до 22:00 по МСК.\n"
-        "• Приметы, святые, герои СССР\n"
-        "• Лунный календарь\n"
-        "• **2 цитаты в день** — в 12:00 и 18:00\n\n"
-        "/test — отправить сейчас\n"
-        "/status — статус"
+        "Публикация: каждый час с 8:00 до 22:00 по МСК.\n"
+        "• Праздники, приметы, святые\n"
+        "• Герои, цитаты, викторины\n"
+        "• Молитвы, пословицы, луна\n\n"
+        "/test — отправить пробный пост\n"
+        "/status — проверить статус"
     )
 
 async def test_post(update, context: ContextTypes.DEFAULT_TYPE):
-    image_path, caption = create_daily_post(post_type="quote_morning")
+    image_path, caption = create_daily_post(post_type="holiday")
     with open(image_path, 'rb') as photo:
         await context.bot.send_photo(chat_id=CHANNEL, photo=photo, caption=caption)
     os.remove(image_path)
-    await update.message.reply_text("✅ Пробный пост (цитата) отправлен!")
+    await update.message.reply_text("✅ Пробный пост (праздник) отправлен!")
 
 async def status(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Бот работает. Расписание активно.")
@@ -75,7 +76,7 @@ def main():
     app.add_handler(CommandHandler("test", test_post))
     app.add_handler(CommandHandler("status", status))
     app.job_queue.run_repeating(send_scheduled_post, interval=3600, first=10)
-    logger.info("✅ Бот запущен. Автопубликация с 2 цитатами в день.")
+    logger.info("✅ Бот запущен. Полный цикл: 8:00–22:00.")
     app.run_polling()
 
 if __name__ == "__main__":
