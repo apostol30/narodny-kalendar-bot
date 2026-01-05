@@ -38,13 +38,15 @@ def load_post_for_time(target_hour):
                 time_str = line.split(']')[0][1:]  # "08:00"
                 hour = int(time_str.split(':')[0])
                 current_hour = hour
-                current_lines = [line.split('] ', 1)[1]]  # Тема
+                # Извлекаем тему (текст после "] ")
+                theme = line.split('] ', 1)[1]
+                current_lines = [theme]
             else:
                 if current_hour is not None:
                     current_lines.append(line)
         # Последний пост
         if current_hour is not None:
-            posts[current_hour] = "\n"..join(current_lines).strip()
+            posts[current_hour] = "\n".join(current_lines).strip()
 
     return posts.get(target_hour)
 
