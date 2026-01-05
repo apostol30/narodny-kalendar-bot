@@ -12,11 +12,9 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHANNEL = os.getenv("CHANNEL", "@narodny_kalendar")
 
-# Расписание постов (8:00–22:00 МСК)
 POST_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
 def load_post_for_time(target_hour):
-    """Загружает пост на сегодняшнюю дату для указанного часа"""
     now = datetime.now()
     filename = f"posts/{now.day:02d}-{now.month:02d}.txt"
     if not os.path.exists(filename):
@@ -31,20 +29,16 @@ def load_post_for_time(target_hour):
         for line in f:
             line = line.rstrip('\n')
             if line.startswith('[') and '] ' in line:
-                # Сохраняем предыдущий пост
                 if current_hour is not None:
                     posts[current_hour] = "\n".join(current_lines).strip()
-                # Извлекаем час
-                time_str = line.split(']')[0][1:]  # "08:00"
+                time_str = line.split(']')[0][1:]
                 hour = int(time_str.split(':')[0])
                 current_hour = hour
-                # Извлекаем тему (текст после "] ")
                 theme = line.split('] ', 1)[1]
                 current_lines = [theme]
             else:
                 if current_hour is not None:
                     current_lines.append(line)
-        # Последний пост
         if current_hour is not None:
             posts[current_hour] = "\n".join(current_lines).strip()
 
@@ -65,9 +59,8 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.warning(f"Нет поста на {moscow_hour}:00")
 
-# === Команды ===
 async def test_post(update, context):
-    post_text = load_post_for_time(8)  # Пробуем 8:00
+    post_text = load_post_for_time(8)
     if post_text:
         await context.bot.send_message(chat_id=CHANNEL, text=post_text)
         await update.message.reply_text("✅ Пробный пост отправлен!")
@@ -88,9 +81,13 @@ def main():
 
     for hour_msk in POST_HOURS:
         run_time_utc = (hour_msk - 3) % 24
-        app.job_queue.run_daily(send_scheduled_post, time(time(run_time_utc, 0, 5)))
+        # ✅ Правильно: один объект time
+        app.job_queue.run_daily(
+            send_scheduled_post,
+            time(hour=run_time_utc, minute=0, second=5)
+        )
 
-    logger.info("✅ Бот запущен. Режим: файлы по дням.")
+    logger.info("✅ Бот запущен. Точная публикация по МСК.")
     app.run_polling()
 
 if __name__ == "__main__":
