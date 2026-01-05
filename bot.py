@@ -2,7 +2,6 @@ import os
 import logging
 from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, ContextTypes
-from post_generator import create_daily_post
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -12,56 +11,69 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 CHANNEL = os.getenv("CHANNEL", "@narodny_kalendar")
-PAUSED = False
 
-POST_TIMES = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
-POST_TYPES = {
-    8: "holiday", 9: "primeta", 10: "saint", 11: "ussr",
-    12: "quote_morning", 13: "primeta", 14: "saint", 15: "ussr",
-    16: "lunar", 17: "primeta", 18: "quote_evening", 19: "quiz",
-    20: "evening_prayer", 21: "proverb", 22: "saint_tomorrow"
-}
+# Расписание постов (8:00–22:00 МСК)
+POST_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
-async def send_post_by_hour(context: ContextTypes.DEFAULT_TYPE):
-    global PAUSED
-    if PAUSED:
-        return
+def load_post_for_time(target_hour):
+    """Загружает пост на сегодняшнюю дату для указанного часа"""
+    now = datetime.now()
+    filename = f"posts/{now.day:02d}-{now.month:02d}.txt"
+    if not os.path.exists(filename):
+        logger.warning(f"Файл не найден: {filename}")
+        return None
+
+    current_hour = None
+    current_lines = []
+    posts = {}
+
+    with open(filename, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.rstrip('\n')
+            if line.startswith('[') and '] ' in line:
+                # Сохраняем предыдущий пост
+                if current_hour is not None:
+                    posts[current_hour] = "\n".join(current_lines).strip()
+                # Извлекаем час
+                time_str = line.split(']')[0][1:]  # "08:00"
+                hour = int(time_str.split(':')[0])
+                current_hour = hour
+                current_lines = [line.split('] ', 1)[1]]  # Тема
+            else:
+                if current_hour is not None:
+                    current_lines.append(line)
+        # Последний пост
+        if current_hour is not None:
+            posts[current_hour] = "\n"..join(current_lines).strip()
+
+    return posts.get(target_hour)
+
+async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
     moscow_hour = (datetime.utcnow().hour + 3) % 24
-    if moscow_hour in POST_TYPES:
-        post_type = POST_TYPES[moscow_hour]
+    if moscow_hour not in POST_HOURS:
+        return
+
+    post_text = load_post_for_time(moscow_hour)
+    if post_text:
         try:
-            image_path, caption = create_daily_post(post_type)
-            with open(image_path, 'rb') as photo:
-                await context.bot.send_photo(chat_id=CHANNEL, photo=photo, caption=caption)
-            os.remove(image_path)
-            logger.info(f"✅ Пост '{post_type}' опубликован в {moscow_hour}:00 МСК")
+            await context.bot.send_message(chat_id=CHANNEL, text=post_text)
+            logger.info(f"✅ Пост опубликован в {moscow_hour}:00")
         except Exception as e:
             logger.error(f"❌ Ошибка: {e}")
+    else:
+        logger.warning(f"Нет поста на {moscow_hour}:00")
+
+# === Команды ===
+async def test_post(update, context):
+    post_text = load_post_for_time(8)  # Пробуем 8:00
+    if post_text:
+        await context.bot.send_message(chat_id=CHANNEL, text=post_text)
+        await update.message.reply_text("✅ Пробный пост отправлен!")
+    else:
+        await update.message.reply_text("❌ Пост не найден.")
 
 async def start(update, context):
-    await update.message.reply_text("🌾 Народный календарь — панель управления\n\n/test — тест\n/status — статус\n/pause — пауза")
-
-async def test_post(update, context):
-    image_path, caption = create_daily_post("holiday")
-    with open(image_path, 'rb') as photo:
-        await context.bot.send_photo(chat_id=CHANNEL, photo=photo, caption=caption)
-    os.remove(image_path)
-    await update.message.reply_text("✅ Пробный пост отправлен!")
-
-async def status(update, context):
-    state = "⏸️ Остановлен" if PAUSED else "▶️ Работает"
-    await update.message.reply_text(f"Статус: {state}")
-
-async def pause(update, context):
-    global PAUSED
-    PAUSED = True
-    await update.message.reply_text("⏸️ Публикация приостановлена на 24 ч.")
-    context.job_queue.run_once(resume_publishing, 86400, chat_id=update.effective_chat.id)
-
-async def resume_publishing(context):
-    global PAUSED
-    PAUSED = False
-    await context.bot.send_message(chat_id=context.job.chat_id, text="▶️ Публикация возобновлена.")
+    await update.message.reply_text("✅ Бот работает. Публикация по дням года.")
 
 def main():
     if not BOT_TOKEN:
@@ -71,17 +83,12 @@ def main():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("test", test_post))
-    app.add_handler(CommandHandler("status", status))
-    app.add_handler(CommandHandler("pause", pause))
 
-    for hour_msk in POST_TIMES:
+    for hour_msk in POST_HOURS:
         run_time_utc = (hour_msk - 3) % 24
-        app.job_queue.run_daily(
-            send_post_by_hour,
-            time=time(hour=run_time_utc, minute=0, second=5)
-        )
+        app.job_queue.run_daily(send_scheduled_post, time(time(run_time_utc, 0, 5)))
 
-    logger.info("✅ Бот запущен. Вечная версия. Публикация по МСК.")
+    logger.info("✅ Бот запущен. Режим: файлы по дням.")
     app.run_polling()
 
 if __name__ == "__main__":
