@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -10,18 +11,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Получение токена и канала из переменных окружения
+# Переменные окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHANNEL = os.getenv("CHANNEL", "@narodny_kalendar").strip()
 
-# Часы публикации по Московскому времени
-POST_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+# Часы публикации по МСК
+POST_HOURS = [8, 9, 1, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
+# === Функция экранирования для MarkdownV2 ===
+def escape_markdown_v2(text: str) -> str:
+    """
+    Экранирует спецсимволы для Telegram MarkdownV2,
+    но сохраняет *жирный*, _курсив_ и ссылки вида [текст](url).
+    """
+    # Шаг 1: временно сохраняем ссылки и выделения
+    placeholders = []
+    
+    def save_placeholder(match):
+        placeholders.append(match.group(0))
+        return f"__PLACEHOLDER__{len(placeholders)-1}__"
+    
+    # Сохраняем ссылки: [текст](url)
+    text = re.sub(r'\[.*?\]\(.*?\)', save_placeholder, text)
+    # Сохраняем *жирный*
+    text = re.sub(r'\*[^*]*\*', save_placeholder, text)
+    # Сохраняем _курсив_ (опционально)
+    text = re.sub(r'_[^_]*_', save_placeholder, text)
+
+    # Шаг 2: экранируем все опасные символы
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    text = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
+    # Шаг 3: восстанавливаем сохранённые фрагменты
+    for i, placeholder in enumerate(placeholders):
+        text = text.replace(f"__PLACEHOLDER__{i}__", placeholder)
+    
+    return text
+
+# === Загрузка поста из файла ===
 def load_post_for_hour(target_hour):
-    """
-    Загружает пост из файла DD-MM.txt для указанного часа.
-    Формат файла: [09:00] ⛪ Святой дня / молитва
-    """
     now = datetime.now()
     filename = f"posts/{now.day:02d}-{now.month:02d}.txt"
     
@@ -30,11 +58,10 @@ def load_post_for_hour(target_hour):
         return None
 
     try:
-        # Читаем файл в кодировке UTF-8 (с поддержкой BOM)
         with open(filename, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
     except Exception as e:
-        logger.error(f"Ошибка чтения файла {filename}: {e}")
+        logger.error(f"Ошибка чтения {filename}: {e}")
         return None
 
     posts = {}
@@ -42,38 +69,30 @@ def load_post_for_hour(target_hour):
     current_content = []
 
     for line in lines:
-        # Убираем только символы новой строки, НЕ пробелы в начале/конце содержимого
         raw_line = line.rstrip('\n\r')
-
         if raw_line.startswith('[') and '] ' in raw_line:
-            # Сохраняем предыдущий пост
             if current_hour is not None:
                 posts[current_hour] = "\n".join(current_content)
-            
-            # Извлекаем час
             try:
-                time_part = raw_line.split(']')[0][1:]  # "09:00"
+                time_part = raw_line.split(']')[0][1:]
                 hour = int(time_part.split(':')[0])
                 current_hour = hour
-                # Извлекаем оставшуюся часть (тема + эмодзи)
                 content_part = raw_line.split('] ', 1)[1]
                 current_content = [content_part]
             except (IndexError, ValueError):
-                # Некорректная строка — пропускаем
                 current_hour = None
                 current_content = []
         else:
             if current_hour is not None:
                 current_content.append(raw_line)
 
-    # Сохраняем последний пост
     if current_hour is not None:
         posts[current_hour] = "\n".join(current_content)
 
     return posts.get(target_hour)
 
+# === Публикация поста ===
 async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
-    """Публикует пост, если сейчас нужный час по МСК"""
     moscow_hour = (datetime.utcnow().hour + 3) % 24
     if moscow_hour not in POST_HOURS:
         return
@@ -81,57 +100,47 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
     post_text = load_post_for_hour(moscow_hour)
     if post_text and post_text.strip():
         try:
+            safe_text = escape_markdown_v2(post_text)
             await context.bot.send_message(
                 chat_id=CHANNEL,
-                text=post_text,
+                text=safe_text,
+                parse_mode="MarkdownV2",
                 disable_web_page_preview=True
             )
             logger.info(f"✅ Пост опубликован в {moscow_hour}:00 МСК")
         except Exception as e:
-            logger.error(f"❌ Ошибка отправки поста: {e}")
+            logger.error(f"❌ Ошибка: {e}")
     else:
-        logger.warning(f"Нет текста для публикации в {moscow_hour}:00")
+        logger.warning(f"Нет текста для {moscow_hour}:00")
 
-# === Команды управления ===
+# === Команды ===
 async def cmd_test(update, context):
-    """Отправляет пробный пост (8:00)"""
-    post = load_post_for_hour(8)
-    if not post:
-        post = "❌ Файл не найден или пуст. Проверьте posts/DD-MM.txt"
+    post = load_post_for_hour(8) or "Файл 08:00 не найден."
     try:
-        await context.bot.send_message(chat_id=CHANNEL, text=post)
-        await update.message.reply_text("✅ Пробный пост отправлен в канал!")
+        safe_post = escape_markdown_v2(post)
+        await context.bot.send_message(chat_id=CHANNEL, text=safe_post, parse_mode="MarkdownV2")
+        await update.message.reply_text("✅ Пробный пост отправлен!")
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {e}")
 
 async def cmd_start(update, context):
-    await update.message.reply_text(
-        "🌾 Народный календарь\n\n"
-        "Автоматическая публикация: 8:00–22:00 по МСК.\n"
-        "Команды:\n"
-        "/test — отправить пост за 8:00\n"
-        "/start — это сообщение"
-    )
+    await update.message.reply_text("✅ Народный календарь. Режим: MarkdownV2.")
 
 # === Запуск ===
 def main():
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN не задан в переменных окружения!")
+        logger.error("❌ BOT_TOKEN не задан!")
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("test", cmd_test))
 
-    # Запуск задач на точное время по МСК
     for hour_msk in POST_HOURS:
         utc_hour = (hour_msk - 3) % 24
-        app.job_queue.run_daily(
-            send_scheduled_post,
-            time(hour=utc_hour, minute=0, second=10)
-        )
+        app.job_queue.run_daily(send_scheduled_post, time(hour=utc_hour, minute=0, second=10))
 
-    logger.info("✅ Бот запущен. Чтение файлов в UTF-8. Публикация по МСК.")
+    logger.info("✅ Бот запущен. Поддержка *жирного* и [ссылок](url) через MarkdownV2.")
     app.run_polling()
 
 if __name__ == "__main__":
