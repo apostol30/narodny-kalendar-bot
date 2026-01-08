@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram Bot для публикации постов из текстовых файлов с поддержкой MarkdownV2.
+Telegram Bot для публикации постов с автоматической генерацией изображений.
 Форматирование: *жирный*, _курсив_, __подчеркивание__, [ссылки](url), `код`
+Генерация изображений: фон + текст (месяц, дата, тема)
 """
 
 import os
@@ -10,6 +11,7 @@ import logging
 import re
 from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, ContextTypes
+from PIL import Image, ImageDraw, ImageFont  # Для генерации изображений
 
 # ==================== НАСТРОЙКА ЛОГИРОВАНИЯ ====================
 logging.basicConfig(
@@ -23,40 +25,191 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ==================== КОНФИГУРАЦИЯ ====================
-# Получаем настройки из переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 CHANNEL = os.getenv("CHANNEL", "@narodny_kalendar").strip()
-POSTS_DIR = "posts"  # Директория с файлами постов
+POSTS_DIR = "posts"                # Папка с текстовыми постами
+ASSETS_DIR = "assets"              # Папка с фоном
+FONTS_DIR = "fonts"                # Папка со шрифтами
+GENERATED_DIR = "generated_images" # Папка для сгенерированных изображений
+
+# Файлы
+BACKGROUND_FILE = os.path.join(ASSETS_DIR, "fon.jpg")   # Фон 1600x1124
+FONT_FILE = os.path.join(FONTS_DIR, "GOST_A.TTF")       # Основной шрифт
 
 # Часы публикации по Московскому времени (UTC+3)
 POST_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
-# ==================== ФУНКЦИИ ОБРАБОТКИ ТЕКСТА ====================
-def escape_markdown_v2(text: str) -> str:
+# Русские названия месяцев
+MONTHS_RU = [
+    "ЯНВАРЬ", "ФЕВРАЛЬ", "МАРТ", "АПРЕЛЬ", "МАЙ", "ИЮНЬ",
+    "ИЮЛЬ", "АВГУСТ", "СЕНТЯБРЬ", "ОКТЯБРЬ", "НОЯБРЬ", "ДЕКАБРЬ"
+]
+
+# ==================== ФУНКЦИИ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ ====================
+def create_post_image(theme: str, month: str, day: str, output_path: str) -> str:
     """
-    Корректно экранирует спецсимволы для Telegram MarkdownV2.
-    Сохраняет форматирование: *жирный*, _курсив_, __подчеркнутый__,
-    `код`, ```блок кода``` и [ссылки](url).
+    Создает изображение для поста по шаблону.
     
     Args:
-        text: Исходный текст с Markdown разметкой
+        theme: Тема поста (например, "ДЕНЬ В ИСТОРИИ: Луи Дагер")
+        month: Название месяца (например, "ЯНВАРЬ")
+        day: Число дня (например, "07")
+        output_path: Путь для сохранения готового изображения
         
     Returns:
-        Текст с экранированными спецсимволами, готовый к отправке
-        с parse_mode="MarkdownV2"
+        Путь к созданному изображению или None в случае ошибки
+    """
+    try:
+        # Проверяем наличие необходимых файлов
+        if not os.path.exists(BACKGROUND_FILE):
+            logger.error(f"Фоновое изображение не найдено: {BACKGROUND_FILE}")
+            return None
+        
+        if not os.path.exists(FONT_FILE):
+            logger.error(f"Шрифт не найден: {FONT_FILE}")
+            return None
+        
+        # 1. Открываем фоновое изображение
+        img = Image.open(BACKGROUND_FILE)
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        draw = ImageDraw.Draw(img)
+        img_width, img_height = img.size
+        
+        # 2. Загружаем шрифты с разными размерами
+        font_month = ImageFont.truetype(FONT_FILE, 90)      # Месяц
+        font_date = ImageFont.truetype(FONT_FILE, 180)      # Дата (крупно)
+        font_theme = ImageFont.truetype(FONT_FILE, 90)      # Тема
+        
+        # 3. Координаты и параметры
+        start_y = 180                    # Начальная позиция по Y
+        line_height = 40                 # Расстояние между элементами
+        line_thickness = 3               # Толщина черт
+        
+        # Функция для расчета центральной позиции по X
+        def get_center_x(text, font):
+            # Используем textlength для новых версий Pillow
+            try:
+                text_width = draw.textlength(text, font=font)
+            except AttributeError:
+                # Для старых версий Pillow
+                bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = bbox[2] - bbox[0]
+            return (img_width - text_width) // 2
+        
+        # 4. Рисуем месяц (черный)
+        month_x = get_center_x(month, font_month)
+        month_y = start_y
+        draw.text((month_x, month_y), month, font=font_month, fill="black")
+        
+        # 5. Черта под месяцем
+        month_width = draw.textlength(month, font=font_month)
+        line1_y = month_y + font_month.size + line_height
+        draw.line(
+            [(month_x, line1_y), (month_x + month_width, line1_y)],
+            fill="black",
+            width=line_thickness
+        )
+        
+        # 6. Рисуем дату (красная, крупно)
+        date_y = line1_y + line_height * 2
+        day_x = get_center_x(day, font_date)
+        draw.text((day_x, date_y), day, font=font_date, fill="red")
+        
+        # 7. Черта под датой
+        date_width = draw.textlength(day, font=font_date)
+        line2_y = date_y + font_date.size + line_height
+        draw.line(
+            [(day_x, line2_y), (day_x + date_width, line2_y)],
+            fill="black",
+            width=line_thickness
+        )
+        
+        # 8. Рисуем тему поста (черный)
+        theme_y = line2_y + line_height * 2
+        
+        # Если тема слишком длинная, разбиваем на строки
+        max_chars_per_line = 25
+        if len(theme) > max_chars_per_line:
+            # Простой перенос по словам
+            words = theme.split()
+            lines = []
+            current_line = ""
+            
+            for word in words:
+                if len(current_line) + len(word) + 1 <= max_chars_per_line:
+                    current_line += (" " + word if current_line else word)
+                else:
+                    lines.append(current_line)
+                    current_line = word
+            
+            if current_line:
+                lines.append(current_line)
+        else:
+            lines = [theme]
+        
+        # Рисуем каждую строку темы
+        for i, line in enumerate(lines):
+            theme_x = get_center_x(line, font_theme)
+            current_theme_y = theme_y + i * (font_theme.size + 20)
+            draw.text((theme_x, current_theme_y), line, font=font_theme, fill="black")
+        
+        # 9. Создаем папку для результата, если её нет
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        
+        # 10. Сохраняем изображение
+        img.save(output_path, "JPEG", quality=95)
+        logger.info(f"✅ Изображение создано: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка при создании изображения: {e}")
+        return None
+
+def extract_theme_from_post(post_text: str) -> str:
+    """
+    Извлекает тему поста из текста.
+    
+    Args:
+        post_text: Полный текст поста
+        
+    Returns:
+        Тема поста или заглушка, если тему извлечь не удалось
+    """
+    if not post_text:
+        return "Народный календарь"
+    
+    # Берем первую строку текста (после времени, если есть)
+    lines = post_text.strip().split('\n')
+    first_line = lines[0] if lines else ""
+    
+    # Убираем временную метку вида [ЧЧ:ММ]
+    first_line = re.sub(r'\[\d{1,2}:\d{2}\]', '', first_line).strip()
+    
+    # Если строка осталась пустой, берем следующую
+    if not first_line and len(lines) > 1:
+        first_line = lines[1].strip()
+    
+    # Ограничиваем длину темы
+    if len(first_line) > 100:
+        first_line = first_line[:97] + "..."
+    
+    return first_line if first_line else "Народный календарь"
+
+# ==================== ФУНКЦИИ РАБОТЫ С ТЕКСТОМ ====================
+def escape_markdown_v2(text: str) -> str:
+    """
+    Экранирует спецсимволы для Telegram MarkdownV2.
     """
     if not text or not isinstance(text, str):
         return ""
     
-    # Символы, которые нужно экранировать в MarkdownV2
     escape_chars = r'_*[]()~`>#+-=|{}.!'
-    
-    # Словарь для временного хранения защищенных блоков
     protected_blocks = {}
     block_counter = 0
     
     def create_protector(name):
-        """Фабрика функций для защиты блоков форматирования"""
         nonlocal block_counter
         def protector(match):
             nonlocal block_counter
@@ -66,57 +219,40 @@ def escape_markdown_v2(text: str) -> str:
             return block_id
         return protector
     
-    # Создаем защитники для разных типов форматирования
     protectors = {
         'CODE_BLOCK': create_protector('CODE_BLOCK'),
         'INLINE_CODE': create_protector('INLINE_CODE'),
         'LINK': create_protector('LINK'),
         'BOLD': create_protector('BOLD'),
         'UNDERLINE': create_protector('UNDERLINE'),
-        'ITALIC_UNDERSCORE': create_protector('ITALIC_US'),
-        'ITALIC_ASTERISK': create_protector('ITALIC_AST')
+        'ITALIC': create_protector('ITALIC')
     }
     
-    # Шаг 1: Защищаем блоки форматирования (в порядке от сложных к простым)
-    # 1. Блоки кода (многострочные) ```
+    # Защищаем блоки форматирования
     text = re.sub(r'```[\s\S]*?```', protectors['CODE_BLOCK'], text)
-    # 2. Inline-код `
     text = re.sub(r'`[^`\n]+`', protectors['INLINE_CODE'], text)
-    # 3. Ссылки [текст](url)
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', protectors['LINK'], text)
-    # 4. Жирный текст **текст**
     text = re.sub(r'\*\*([^*]+)\*\*', protectors['BOLD'], text)
-    # 5. Подчеркивание __текст__
     text = re.sub(r'__([^_]+)__', protectors['UNDERLINE'], text)
-    # 6. Курсив через _текст_
-    text = re.sub(r'_([^_\n]+)_', protectors['ITALIC_UNDERSCORE'], text)
-    # 7. Курсив через *текст*
-    text = re.sub(r'\*([^*\n]+)\*', protectors['ITALIC_ASTERISK'], text)
+    text = re.sub(r'[_*]([^_*\n]+)[_*]', protectors['ITALIC'], text)
     
-    # Шаг 2: Экранируем все опасные символы
+    # Экранируем опасные символы
     for char in escape_chars:
         text = text.replace(char, '\\' + char)
     
-    # Шаг 3: Восстанавливаем защищенные блоки
-    for block_id, original_content in protected_blocks.items():
-        text = text.replace(block_id, original_content)
+    # Восстанавливаем защищенные блоки
+    for block_id, original in protected_blocks.items():
+        text = text.replace(block_id, original)
     
     return text
 
 def load_post_for_hour(target_hour: int) -> str:
     """
     Загружает пост для указанного часа из файла с текущей датой.
-    
-    Args:
-        target_hour: Час по Московскому времени
-        
-    Returns:
-        Текст поста или пустая строка, если пост не найден
     """
     now = datetime.now()
     filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
     
-    # Проверяем существование файла
     if not os.path.exists(filename):
         logger.warning(f"Файл не найден: {filename}")
         return ""
@@ -128,7 +264,6 @@ def load_post_for_hour(target_hour: int) -> str:
         logger.error(f"Ошибка чтения файла {filename}: {e}")
         return ""
     
-    # Парсим файл: формат [ЧЧ:ММ] текст
     posts = {}
     current_hour = None
     current_content = []
@@ -136,29 +271,23 @@ def load_post_for_hour(target_hour: int) -> str:
     for line_num, line in enumerate(lines, 1):
         raw_line = line.rstrip('\n\r')
         
-        # Если строка начинается с [ЧЧ:ММ] - это начало нового поста
         if raw_line.startswith('[') and '] ' in raw_line:
-            # Сохраняем предыдущий пост
             if current_hour is not None and current_content:
                 posts[current_hour] = "\n".join(current_content).strip()
             
-            # Парсим время нового поста
             try:
-                time_part = raw_line.split(']')[0][1:]  # Убираем [ и ]
+                time_part = raw_line.split(']')[0][1:]
                 hour = int(time_part.split(':')[0])
                 current_hour = hour
                 content_part = raw_line.split('] ', 1)[1]
                 current_content = [content_part] if content_part.strip() else []
-            except (IndexError, ValueError) as e:
-                logger.warning(f"Ошибка парсинга строки {line_num}: {raw_line}")
+            except (IndexError, ValueError):
                 current_hour = None
                 current_content = []
         else:
-            # Продолжение текущего поста
             if current_hour is not None:
                 current_content.append(raw_line)
     
-    # Сохраняем последний пост в файле
     if current_hour is not None and current_content:
         posts[current_hour] = "\n".join(current_content).strip()
     
@@ -167,17 +296,13 @@ def load_post_for_hour(target_hour: int) -> str:
 # ==================== ФУНКЦИИ БОТА ====================
 async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
     """
-    Функция, вызываемая по расписанию для публикации постов.
-    Определяет текущий час по МСК и публикует соответствующий пост.
+    Функция, вызываемая по расписанию для публикации постов с изображениями.
     """
     try:
-        # Определяем текущий час по Московскому времени (UTC+3)
+        # Определяем текущий час по МСК
         utc_hour = datetime.utcnow().hour
         moscow_hour = (utc_hour + 3) % 24
         
-        logger.debug(f"Текущий час: UTC={utc_hour}, МСК={moscow_hour}")
-        
-        # Проверяем, нужно ли публиковать в этот час
         if moscow_hour not in POST_HOURS:
             return
         
@@ -188,60 +313,105 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
             logger.warning(f"Нет контента для публикации в {moscow_hour}:00 МСК")
             return
         
-        # Проверяем длину поста (ограничение Telegram: 4096 символов)
+        # Получаем текущую дату
+        now = datetime.now()
+        month_ru = MONTHS_RU[now.month - 1]
+        day = now.strftime("%d")
+        
+        # Извлекаем тему поста
+        theme = extract_theme_from_post(post_text)
+        
+        # Проверяем длину поста (ограничение Telegram)
         if len(post_text) > 4000:
             post_text = post_text[:4000] + "\n\n..."
             logger.warning(f"Пост для {moscow_hour}:00 обрезан до 4000 символов")
         
-        # Экранируем текст для MarkdownV2
+        # Подготавливаем текст для отправки
         safe_text = escape_markdown_v2(post_text)
         
-        # Публикуем пост в канал
+        # Создаем уникальное имя файла для изображения
+        image_filename = f"post_{now.day:02d}_{now.month:02d}_{moscow_hour:02d}.jpg"
+        image_path = os.path.join(GENERATED_DIR, image_filename)
+        
+        # 1. Создаем и отправляем изображение
+        created_image = create_post_image(theme, month_ru, day, image_path)
+        
+        if created_image and os.path.exists(created_image):
+            try:
+                with open(created_image, 'rb') as photo:
+                    await context.bot.send_photo(
+                        chat_id=CHANNEL,
+                        photo=photo,
+                        caption=safe_text,
+                        parse_mode="MarkdownV2",
+                        disable_notification=False
+                    )
+                logger.info(f"🖼️ Пост с изображением опубликован в {moscow_hour}:00 МСК")
+                return
+            except Exception as e:
+                logger.error(f"⚠️ Не удалось отправить изображение: {e}")
+                # Продолжаем с отправкой текста
+        
+        # 2. Если изображение не создалось, отправляем только текст
         await context.bot.send_message(
             chat_id=CHANNEL,
             text=safe_text,
             parse_mode="MarkdownV2",
             disable_web_page_preview=True,
-            disable_notification=False  # Уведомления включены
+            disable_notification=False
         )
-        
-        logger.info(f"✅ Пост опубликован в {moscow_hour}:00 МСК")
+        logger.info(f"✅ Текстовый пост опубликован в {moscow_hour}:00 МСК")
         
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при публикации: {e}", exc_info=True)
 
 async def cmd_test(update, context):
     """
-    Команда /test - отправляет тестовый пост (для 8:00)
+    Команда /test - отправляет тестовый пост с изображением
     """
     try:
-        post_text = load_post_for_hour(8)
+        now = datetime.now()
+        month_ru = MONTHS_RU[now.month - 1]
+        day = now.strftime("%d")
+        theme = "Тестовый пост для проверки генерации изображений"
         
-        if not post_text:
-            post_text = (
-                "*Тестовый пост*\n\n"
-                "Это тестовое сообщение с __разными__ стилями:\n"
-                "- *Курсив*\n"
-                "- **Жирный текст**\n"
-                "- __Подчеркивание__\n"
-                "- `Встроенный код`\n"
-                "- [Ссылка на Google](https://google.com)\n\n"
-                "```python\nprint('Блок кода')\n```"
+        # Создаем тестовое изображение
+        image_filename = f"test_{int(datetime.now().timestamp())}.jpg"
+        image_path = os.path.join(GENERATED_DIR, image_filename)
+        
+        created_image = create_post_image(theme, month_ru, day, image_path)
+        
+        test_text = (
+            "*Тестовый пост с изображением*\n\n"
+            "Это тестовое сообщение для проверки работы бота.\n"
+            "Изображение создано автоматически.\n\n"
+            "**Поддерживаемое форматирование:**\n"
+            "- *Курсив*\n"
+            "- **Жирный текст**\n"
+            "- `Встроенный код`\n"
+            "- [Ссылка на Google](https://google.com)"
+        )
+        
+        safe_text = escape_markdown_v2(test_text)
+        
+        if created_image and os.path.exists(created_image):
+            with open(created_image, 'rb') as photo:
+                await context.bot.send_photo(
+                    chat_id=CHANNEL,
+                    photo=photo,
+                    caption=safe_text,
+                    parse_mode="MarkdownV2"
+                )
+            message = "✅ Тестовый пост с изображением отправлен в канал!"
+        else:
+            await context.bot.send_message(
+                chat_id=CHANNEL,
+                text=safe_text,
+                parse_mode="MarkdownV2"
             )
+            message = "✅ Тестовый пост отправлен (без изображения)!"
         
-        safe_text = escape_markdown_v2(post_text)
-        
-        await context.bot.send_message(
-            chat_id=CHANNEL,
-            text=safe_text,
-            parse_mode="MarkdownV2",
-            disable_web_page_preview=True
-        )
-        
-        await update.message.reply_text(
-            "✅ Тестовый пост отправлен в канал!\n"
-            f"Проверьте: {CHANNEL}"
-        )
+        await update.message.reply_text(f"{message}\nПроверьте: {CHANNEL}")
         
     except Exception as e:
         error_msg = f"❌ Ошибка при отправке тестового поста: {e}"
@@ -254,17 +424,17 @@ async def cmd_start(update, context):
     """
     welcome_text = (
         "🤖 *Бот Народный Календарь*\n\n"
-        "Я публикую посты в канал по расписанию.\n\n"
-        "*Поддерживаемое форматирование:*\n"
-        "• *Курсив* или _Курсив_\n"
-        "• **Жирный текст**\n"
-        "• __Подчеркивание__\n"
-        "• `Встроенный код`\n"
-        "• ```Блок кода```\n"
-        "• [Ссылки](https://example.com)\n\n"
+        "Я публикую посты в канал по расписанию *с автоматической генерацией изображений*.\n\n"
+        "*Формат изображения:*\n"
+        "• Месяц (черный)\n"
+        "• Черта\n"
+        "• Дата (красный, крупно)\n"
+        "• Черта\n"
+        "• Тема поста (черный)\n\n"
         "*Команды:*\n"
         "/start - это сообщение\n"
-        "/test - отправить тестовый пост\n\n"
+        "/test - отправить тестовый пост с изображением\n"
+        "/status - информация о состоянии бота\n\n"
         f"Канал: {CHANNEL}\n"
         f"Часы публикации (МСК): {', '.join(map(str, POST_HOURS))}"
     )
@@ -282,6 +452,19 @@ async def cmd_status(update, context):
     utc_hour = now.hour
     moscow_hour = (utc_hour + 3) % 24
     
+    # Проверяем наличие необходимых файлов и папок
+    checks = {
+        "Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
+        "Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
+        "Папка с постами": os.path.exists(POSTS_DIR),
+        "Папка для изображений": os.path.exists(GENERATED_DIR),
+    }
+    
+    check_results = "\n".join([
+        f"{'✅' if status else '❌'} {name}"
+        for name, status in checks.items()
+    ])
+    
     # Проверяем наличие файла на сегодня
     filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
     file_exists = os.path.exists(filename)
@@ -292,9 +475,9 @@ async def cmd_status(update, context):
         f"• *Дата:* {now.strftime('%d.%m.%Y')}\n"
         f"• *Час МСК:* {moscow_hour}\n"
         f"• *Файл на сегодня:* {'✅' if file_exists else '❌'} {filename}\n"
-        f"• *Следующий пост:* {'Скоро' if moscow_hour in POST_HOURS else 'Не сегодня'}\n"
-        f"• *Часы публикации (МСК):* {', '.join(map(str, POST_HOURS))}\n\n"
-        f"_Бот работает в режиме MarkdownV2_"
+        f"• *Следующий пост:* {'Скоро' if moscow_hour in POST_HOURS else 'Не сегодня'}\n\n"
+        f"*Проверка файлов:*\n{check_results}\n\n"
+        f"_Бот работает в режиме MarkdownV2 с генерацией изображений_"
     )
     
     await update.message.reply_text(
@@ -316,11 +499,21 @@ def main():
         logger.error("❌ ОШИБКА: CHANNEL не задан!")
         return
     
-    # Создаем директорию для постов, если её нет
-    if not os.path.exists(POSTS_DIR):
-        os.makedirs(POSTS_DIR)
-        logger.info(f"📁 Создана директория для постов: {POSTS_DIR}")
-        logger.info(f"📝 Пример файла: {POSTS_DIR}/07-01.txt")
+    # Создаем необходимые директории
+    directories = [POSTS_DIR, ASSETS_DIR, FONTS_DIR, GENERATED_DIR]
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            logger.info(f"📁 Создана директория: {directory}")
+    
+    # Проверяем наличие критических файлов
+    if not os.path.exists(BACKGROUND_FILE):
+        logger.warning(f"⚠️ Фоновое изображение не найдено: {BACKGROUND_FILE}")
+        logger.warning("Поместите файл fon.jpg (1600x1124) в папку assets/")
+    
+    if not os.path.exists(FONT_FILE):
+        logger.warning(f"⚠️ Шрифт не найден: {FONT_FILE}")
+        logger.warning("Поместите файл GOST_A.TTF в папку fonts/")
     
     # Инициализация приложения
     try:
@@ -339,11 +532,10 @@ def main():
     # Настройка расписания
     job_added = 0
     for hour_msk in POST_HOURS:
-        # Конвертируем МСК в UTC (МСК = UTC+3)
         utc_hour = (hour_msk - 3) % 24
         app.job_queue.run_daily(
             send_scheduled_post,
-            time(hour=utc_hour, minute=0, second=10),  # +10 секунд для надежности
+            time(hour=utc_hour, minute=0, second=10),
             name=f"post_{hour_msk:02d}"
         )
         job_added += 1
@@ -351,7 +543,7 @@ def main():
     logger.info(f"✅ Настроено {job_added} заданий по расписанию")
     logger.info(f"📢 Бот будет публиковать в канал: {CHANNEL}")
     logger.info(f"🕐 Часы публикации (МСК): {POST_HOURS}")
-    logger.info("✨ Бот запущен. Ожидание команд и срабатывания таймеров...")
+    logger.info("🎨 Режим: генерация изображений + MarkdownV2")
     logger.info("=" * 50)
     
     # Запуск бота
