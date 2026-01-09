@@ -42,7 +42,7 @@ def create_post_image(theme, month, day, output_path="output/post_image.jpg"):
 
         # 3. Рассчитываем координаты для центрирования текста
         img_width, img_height = img.size
-        line_height = 40  # Расстояние между строками
+        line_height = 20  # Расстояние между строками
 
         # Координата Y для первой строки (месяц) - отступ от верха
         start_y = 180
@@ -95,7 +95,7 @@ def create_post_image(theme, month, day, output_path="output/post_image.jpg"):
         for theme_line in theme_lines:
             theme_x = get_center_x(theme_line, font_theme)
             draw.text((theme_x, current_y), theme_line, font=font_theme, fill="black")
-            current_y += font_theme.size + 15  # Межстрочный интервал для темы
+            current_y += font_theme.size + 10  # Межстрочный интервал для темы
 
         # 9. Создаем папку для результата, если её нет
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
