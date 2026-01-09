@@ -42,10 +42,10 @@ def create_post_image(theme, month, day, output_path="output/post_image.jpg"):
 
         # 3. Рассчитываем координаты для центрирования текста
         img_width, img_height = img.size
-        line_height = 20  # Расстояние между строками
+        line_height = 15  # Расстояние между строками
 
         # Координата Y для первой строки (месяц) - отступ от верха
-        start_y = 180
+        start_y = 300
 
         # Функция для расчета координаты X, чтобы текст был по центру[citation:1]
         def get_center_x(text, font):
