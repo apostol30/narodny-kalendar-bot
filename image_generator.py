@@ -70,7 +70,7 @@ def create_post_image(theme, month, day, output_path="output/post_image.jpg"):
             )
 
         # Размеры шрифтов подбираются опытным путем под ваш размер фона 1600x1124
-        font_month = ImageFont.truetype(font_path_bold, 90)  # Крупный для месяца
+        font_month = ImageFont.truetype(font_path_bold, 70)  # Крупный для месяца
         font_date = ImageFont.truetype(font_path_date, 180)  # Очень крупный, красный для даты
         font_theme = ImageFont.truetype(font_path_regular, 90)  # Как у месяца, для темы
 
