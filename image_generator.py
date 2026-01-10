@@ -79,7 +79,7 @@ def create_post_image(theme, month, day, output_path="output/post_image.jpg"):
         line_height = 15  # Расстояние между строками
 
         # Координата Y для первой строки (месяц) - отступ от верха
-        start_y = 330
+        start_y = 500
 
         # Функция для расчета координаты X, чтобы текст был по центру
         def get_center_x(text, font):
