@@ -59,6 +59,56 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
     Returns:
         Путь к созданному изображению или None в случае ошибки
     """
+    
+    def remove_emoji_and_special(text):
+        """
+        Удаляет эмодзи и специальные символы, оставляя только кириллицу, латиницу, цифры и основные знаки препинания.
+        """
+        if not text:
+            return ""
+        
+        # Расширенный шаблон для эмодзи и специальных символов
+        emoji_pattern = re.compile(
+            "["
+            u"\U0001F600-\U0001F64F"  # эмотиконы
+            u"\U0001F300-\U0001F5FF"  # символы и пиктограммы
+            u"\U0001F680-\U0001F6FF"  # транспорт и карта
+            u"\U0001F1E0-\U0001F1FF"  # флаги (iOS)
+            u"\U00002500-\U00002BEF"  # различные символы
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            u"\U0001f926-\U0001f937"
+            u"\U00010000-\U0010ffff"
+            u"\u2640-\u2642"
+            u"\u2600-\u2B55"
+            u"\u200d"  # символ соединения (для составных эмодзи)
+            u"\u23cf"
+            u"\u23e9"
+            u"\u231a"
+            u"\ufe0f"  # вариационный селектор-16
+            u"\u3030"
+            u"\u00A9\u00AE\u2122"  # знаки авторского права, товарные знаки
+            "]+",
+            flags=re.UNICODE,
+        )
+        
+        # Удаляем эмодзи по шаблону
+        text = emoji_pattern.sub(r'', text)
+        
+        # Дополнительно: удаляем оставшиеся непечатные и специальные символы,
+        # оставляя только кириллицу, латиницу, цифры, пробелы и основные знаки препинания
+        allowed_chars_pattern = re.compile(
+            r'[^'
+            r'a-zA-Zа-яА-ЯёЁ'  # латиница и кириллица
+            r'0-9'             # цифры
+            r'\s'              # пробелы
+            r'.,:;!?\-–—()\[\]{}«»"\''
+            r']+'
+        )
+        text = allowed_chars_pattern.sub(r'', text)
+        
+        return text.strip()
+    
     try:
         # Проверяем наличие необходимых файлов
         if not os.path.exists(BACKGROUND_FILE):
@@ -77,13 +127,13 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         draw = ImageDraw.Draw(img)
         img_width, img_height = img.size
         
-        # 2. Загружаем шрифты с разными размерами
+        # 2. Загружаем шрифты с разными размерами (оптимизированные для компактности)
         font_month = ImageFont.truetype(FONT_FILE, 80)      # Месяц
-        font_date = ImageFont.truetype(FONT_FILE, 180)      # Дата (крупно)
-        font_theme = ImageFont.truetype(FONT_FILE, 90)      # Тема
+        font_date = ImageFont.truetype(FONT_FILE, 150)      # Дата (крупно)
+        font_theme = ImageFont.truetype(FONT_FILE, 80)      # Тема
         
-        # 3. Координаты и параметры
-        start_y = 220                   # Начальная позиция по Y
+        # 3. Координаты и параметры (оптимизированные для более компактного и нижнего расположения)
+        start_y = 220                    # Начальная позиция по Y (сдвинута вниз)
         line_height = 20                 # Расстояние между элементами
         line_thickness = 3               # Толщина черт
         
@@ -97,6 +147,20 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
             return (img_width - text_width) // 2
+        
+        # ========== ВАЖНО: ОЧИСТКА ТЕМЫ ПЕРЕД ИСПОЛЬЗОВАНИЕМ ==========
+        # Логируем исходную тему для отладки
+        logger.debug(f"[ГЕНЕРАТОР] Тема ДО очистки: {repr(theme)}")
+        
+        # Очищаем тему от эмодзи и специальных символов
+        theme_cleaned = remove_emoji_and_special(theme)
+        
+        # Логируем результат очистки
+        logger.debug(f"[ГЕНЕРАТОР] Тема ПОСЛЕ очистки: {repr(theme_cleaned)}")
+        
+        # Используем очищенную тему для дальнейшей обработки
+        theme = theme_cleaned
+        # =============================================================
         
         # 4. Рисуем месяц (черный)
         month_x = get_center_x(month, font_month)
@@ -129,30 +193,37 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         # 8. Рисуем тему поста (черный)
         theme_y = line2_y + line_height * 2
         
-        # Если тема слишком длинная, разбиваем на строки
-        max_chars_per_line = 25
-        if len(theme) > max_chars_per_line:
-            # Простой перенос по словам
-            words = theme.split()
-            lines = []
-            current_line = ""
-            
-            for word in words:
-                if len(current_line) + len(word) + 1 <= max_chars_per_line:
-                    current_line += (" " + word if current_line else word)
-                else:
-                    lines.append(current_line)
-                    current_line = word
-            
-            if current_line:
-                lines.append(current_line)
-        else:
-            lines = [theme]
+        # Улучшенный перенос строк: используем ширину изображения вместо фиксированного количества символов
+        theme_lines = []
+        max_line_width = img_width * 0.8  # Максимальная ширина строки - 80% от ширины изображения
         
-        # Рисуем каждую строку темы
-        for i, line in enumerate(lines):
+        words = theme.split()
+        current_line = ""
+        
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            # Проверяем ширину строки с новым словом
+            if draw.textlength(test_line, font=font_theme) <= max_line_width:
+                current_line = test_line
+            else:
+                if current_line:  # Сохраняем текущую строку, если она не пустая
+                    theme_lines.append(current_line)
+                current_line = word  # Начинаем новую строку с текущего слова
+        
+        if current_line:  # Добавляем последнюю строку
+            theme_lines.append(current_line)
+        
+        # Если после очистки тема стала пустой, используем заглушку
+        if not theme_lines or all(not line.strip() for line in theme_lines):
+            theme_lines = ["Народный календарь"]
+            logger.debug("[ГЕНЕРАТОР] Тема оказалась пустой после очистки, использована заглушка")
+        
+        # Рисуем каждую строку темы (с уменьшенным межстрочным интервалом)
+        theme_line_spacing = 8
+        
+        for i, line in enumerate(theme_lines):
             theme_x = get_center_x(line, font_theme)
-            current_theme_y = theme_y + i * (font_theme.size + 20)
+            current_theme_y = theme_y + i * (font_theme.size + theme_line_spacing)
             draw.text((theme_x, current_theme_y), line, font=font_theme, fill="black")
         
         # 9. Создаем папку для результата, если её нет
@@ -164,7 +235,7 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         return output_path
         
     except Exception as e:
-        logger.error(f"❌ Ошибка при создании изображения: {e}")
+        logger.error(f"❌ Ошибка при создании изображения: {e}", exc_info=True)
         return None
 
 def extract_theme_from_post(post_text: str) -> str:
