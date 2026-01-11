@@ -183,7 +183,7 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         
         # 7. Черта под датой
         date_width = draw.textlength(day, font=font_date)
-        line2_y = month_y + font_date.size + line_height
+        line2_y = day_x + font_date.size + line_height
         draw.line(
             [(day_x, line2_y), (day_x + date_width, line2_y)],
             fill="black",
