@@ -195,7 +195,7 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         
         # Улучшенный перенос строк: используем ширину изображения вместо фиксированного количества символов
         theme_lines = []
-        max_line_width = img_width * 0.8  # Максимальная ширина строки - 80% от ширины изображения
+        max_line_width = img_width * 0.6  # Максимальная ширина строки - 80% от ширины изображения
         
         words = theme.split()
         current_line = ""
