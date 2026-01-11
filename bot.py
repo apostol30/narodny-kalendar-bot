@@ -37,7 +37,7 @@ BACKGROUND_FILE = os.path.join(ASSETS_DIR, "fon.jpg")   # Фон 1600x1124
 FONT_FILE = os.path.join(FONTS_DIR, "GOST_A.TTF")       # Основной шрифт
 
 # Часы публикации по Московскому времени (UTC+3)
-POST_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
+POST_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 
 # Русские названия месяцев
 MONTHS_RU = [
