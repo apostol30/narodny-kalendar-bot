@@ -128,9 +128,9 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         img_width, img_height = img.size
         
         # 2. Загружаем шрифты с разными размерами (оптимизированные для компактности)
-        font_month = ImageFont.truetype(FONT_FILE, 80)      # Месяц
+        font_month = ImageFont.truetype(FONT_FILE, 90)      # Месяц
         font_date = ImageFont.truetype(FONT_FILE, 150)      # Дата (крупно)
-        font_theme = ImageFont.truetype(FONT_FILE, 80)      # Тема
+        font_theme = ImageFont.truetype(FONT_FILE, 90)      # Тема
         
         # 3. Координаты и параметры (оптимизированные для более компактного и нижнего расположения)
         start_y = 220                    # Начальная позиция по Y (сдвинута вниз)
