@@ -78,13 +78,13 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         img_width, img_height = img.size
         
         # 2. Загружаем шрифты с разными размерами
-        font_month = ImageFont.truetype(FONT_FILE, 90)      # Месяц
+        font_month = ImageFont.truetype(FONT_FILE, 80)      # Месяц
         font_date = ImageFont.truetype(FONT_FILE, 180)      # Дата (крупно)
         font_theme = ImageFont.truetype(FONT_FILE, 90)      # Тема
         
         # 3. Координаты и параметры
-        start_y = 180                    # Начальная позиция по Y
-        line_height = 40                 # Расстояние между элементами
+        start_y = 220                   # Начальная позиция по Y
+        line_height = 20                 # Расстояние между элементами
         line_thickness = 3               # Толщина черт
         
         # Функция для расчета центральной позиции по X
