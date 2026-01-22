@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Telegram Bot для публикации постов с автоматической генерацией изображений.
-Поддерживает форматирование через Markdown2 (заголовки, списки, таблицы, код и т.д.)
+Форматирование: *жирный*, _курсив_, __подчеркивание__, [ссылки](url), `код`
 Генерация изображений: фон + текст (месяц, дата, тема)
 """
 
 import os
 import logging
 import re
-import markdown2
 from datetime import datetime, time
 from telegram.ext import Application, CommandHandler, ContextTypes
 from PIL import Image, ImageDraw, ImageFont  # Для генерации изображений
@@ -44,20 +43,6 @@ POST_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 MONTHS_RU = [
     "ЯНВАРЬ", "ФЕВРАЛЬ", "МАРТ", "АПРЕЛЬ", "МАЙ", "ИЮНЬ",
     "ИЮЛЬ", "АВГУСТ", "СЕНТЯБРЬ", "ОКТЯБРЬ", "НОЯБРЬ", "ДЕКАБРЬ"
-]
-
-# Настройки markdown2
-MARKDOWN_EXTRAS = [
-    'fenced-code-blocks',  # Блоки кода с обратными апострофами
-    'tables',              # Таблицы
-    'break-on-newline',    # Перенос строк на одинарных переводах
-    'cuddled-lists',       # Более компактные списки
-    'markdown-in-html',    # Разрешить markdown внутри HTML
-    'spoiler',             # Скрытый текст
-    'strike',              # Зачеркнутый текст
-    'target-blank-links',  # Открывать ссылки в новой вкладке
-    'header-ids',          # Добавлять ID к заголовкам
-    'pyshell',             # Подсветка кода Python
 ]
 
 # ==================== ФУНКЦИИ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ ====================
@@ -283,190 +268,58 @@ def extract_theme_from_post(post_text: str) -> str:
     
     return first_line if first_line else "Народный календарь"
 
-# ==================== ФУНКЦИИ ФОРМАТИРОВАНИЯ ТЕКСТА ====================
-def convert_markdown_to_html(text: str) -> str:
-    """
-    Конвертирует Markdown текст в HTML с поддержкой расширений.
-    
-    Args:
-        text: Исходный текст в формате Markdown
-        
-    Returns:
-        Текст в формате HTML
-    """
-    if not text:
-        return ""
-    
-    try:
-        # Конвертируем Markdown в HTML
-        html = markdown2.markdown(
-            text,
-            extras=MARKDOWN_EXTRAS,
-            safe_mode=False
-        )
-        return html
-    except Exception as e:
-        logger.error(f"Ошибка конвертации Markdown в HTML: {e}")
-        return text
-
-def escape_html_for_telegram(html_text: str) -> str:
-    """
-    Экранирует HTML-теги для Telegram.
-    Telegram поддерживает ограниченный набор HTML-тегов.
-    
-    Args:
-        html_text: HTML текст после конвертации из Markdown
-        
-    Returns:
-        Текст, безопасный для отправки в Telegram
-    """
-    if not html_text:
-        return ""
-    
-    # Telegram поддерживает только: <b>, <i>, <u>, <s>, <code>, <pre>, <a>
-    # Заменяем другие теги на эквивалентное форматирование
-    
-    # Сначала заменяем заголовки на жирный текст с переносом строк
-    html_text = re.sub(r'<h1>(.*?)</h1>', r'<b>\1</b>\n\n', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<h2>(.*?)</h2>', r'<b>\1</b>\n\n', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<h3>(.*?)</h3>', r'<b>\1</b>\n\n', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<h[4-6]>(.*?)</h[4-6]>', r'<b>\1</b>\n', html_text, flags=re.IGNORECASE)
-    
-    # Заменяем <strong> на <b> и <em> на <i>
-    html_text = re.sub(r'<strong>(.*?)</strong>', r'<b>\1</b>', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<em>(.*?)</em>', r'<i>\1</i>', html_text, flags=re.IGNORECASE)
-    
-    # Заменяем <del>, <strike> на <s>
-    html_text = re.sub(r'<del>(.*?)</del>', r'<s>\1</s>', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<strike>(.*?)</strike>', r'<s>\1</s>', html_text, flags=re.IGNORECASE)
-    
-    # Обрабатываем списки
-    # Заменяем <ul> и <li> на символы
-    html_text = re.sub(r'<ul>', '', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'</ul>', '\n', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'<li>(.*?)</li>', r'• \1\n', html_text, flags=re.IGNORECASE)
-    
-    # Обрабатываем нумерованные списки
-    html_text = re.sub(r'<ol>', '', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'</ol>', '\n', html_text, flags=re.IGNORECASE)
-    
-    def replace_ol(match):
-        items = match.group(1)
-        # Простая замена - нумеруем все пункты подряд
-        lines = [line.strip() for line in items.split('</li><li>') if line.strip()]
-        numbered = '\n'.join([f'{i+1}. {line}' for i, line in enumerate(lines)])
-        return numbered + '\n'
-    
-    html_text = re.sub(r'<ol>(.*?)</ol>', replace_ol, html_text, flags=re.IGNORECASE | re.DOTALL)
-    
-    # Заменяем абзацы на переносы строк
-    html_text = re.sub(r'<p>(.*?)</p>', r'\1\n', html_text, flags=re.IGNORECASE)
-    
-    # Удаляем <div> теги, оставляя содержимое
-    html_text = re.sub(r'<div[^>]*>', '', html_text, flags=re.IGNORECASE)
-    html_text = re.sub(r'</div>', '\n', html_text, flags=re.IGNORECASE)
-    
-    # Заменяем <br> на перенос строки
-    html_text = re.sub(r'<br\s*/?>', '\n', html_text, flags=re.IGNORECASE)
-    
-    # Удаляем все остальные HTML-теги, кроме разрешенных Telegram
-    # Сначала защитим разрешенные теги
-    protected_tags = re.findall(r'<(b|i|u|s|code|pre|a)[^>]*>.*?</\1>', html_text, flags=re.IGNORECASE | re.DOTALL)
-    for i, tag in enumerate(protected_tags):
-        html_text = html_text.replace(tag, f'__PROTECTED_TAG_{i}__')
-    
-    # Удаляем все оставшиеся HTML-теги
-    html_text = re.sub(r'<[^>]+>', '', html_text)
-    
-    # Восстанавливаем защищенные теги
-    for i, tag in enumerate(protected_tags):
-        html_text = html_text.replace(f'__PROTECTED_TAG_{i}__', tag)
-    
-    # Экранируем специальные символы HTML
-    html_text = html_text.replace('&', '&amp;')
-    html_text = html_text.replace('<', '&lt;')
-    html_text = html_text.replace('>', '&gt;')
-    
-    # Восстанавливаем разрешенные теги
-    html_text = html_text.replace('&lt;b&gt;', '<b>')
-    html_text = html_text.replace('&lt;/b&gt;', '</b>')
-    html_text = html_text.replace('&lt;i&gt;', '<i>')
-    html_text = html_text.replace('&lt;/i&gt;', '</i>')
-    html_text = html_text.replace('&lt;u&gt;', '<u>')
-    html_text = html_text.replace('&lt;/u&gt;', '</u>')
-    html_text = html_text.replace('&lt;s&gt;', '<s>')
-    html_text = html_text.replace('&lt;/s&gt;', '</s>')
-    html_text = html_text.replace('&lt;code&gt;', '<code>')
-    html_text = html_text.replace('&lt;/code&gt;', '</code>')
-    html_text = html_text.replace('&lt;pre&gt;', '<pre>')
-    html_text = html_text.replace('&lt;/pre&gt;', '</pre>')
-    html_text = html_text.replace('&lt;a href=', '<a href=')
-    html_text = html_text.replace('&lt;/a&gt;', '</a>')
-    
-    # Обрабатываем таблицы (простая замена на текстовый формат)
-    def replace_table(match):
-        table_html = match.group(0)
-        # Удаляем все HTML-теги из таблицы
-        table_text = re.sub(r'<[^>]+>', ' ', table_html)
-        table_text = re.sub(r'\s+', ' ', table_text).strip()
-        return f'\n📊 Таблица: {table_text[:100]}...\n'
-    
-    html_text = re.sub(r'<table[^>]*>.*?</table>', replace_table, html_text, flags=re.IGNORECASE | re.DOTALL)
-    
-    # Убираем лишние переносы строк
-    html_text = re.sub(r'\n{3,}', '\n\n', html_text)
-    
-    return html_text.strip()
-
-def format_text_for_telegram(text: str, parse_mode: str = "HTML") -> str:
-    """
-    Форматирует текст для Telegram с поддержкой Markdown и HTML.
-    
-    Args:
-        text: Исходный текст
-        parse_mode: Режим форматирования ("HTML" или "MarkdownV2")
-        
-    Returns:
-        Отформатированный текст
-    """
-    if not text:
-        return ""
-    
-    if parse_mode == "HTML":
-        try:
-            # Сначала конвертируем Markdown в HTML
-            html_text = convert_markdown_to_html(text)
-            
-            # Затем экранируем для Telegram
-            telegram_text = escape_html_for_telegram(html_text)
-            
-            return telegram_text
-        except Exception as e:
-            logger.error(f"Ошибка форматирования текста: {e}")
-            # Возвращаем оригинальный текст в случае ошибки
-            return escape_html_for_telegram(text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
-    
-    elif parse_mode == "MarkdownV2":
-        # Экранирование для MarkdownV2 (оставлено для совместимости)
-        escape_chars = r'_*[]()~`>#+-=|{}.!'
-        for char in escape_chars:
-            text = text.replace(char, '\\' + char)
-        return text
-    
-    else:
-        # Простой текст без форматирования
-        return text
-
 # ==================== ФУНКЦИИ РАБОТЫ С ТЕКСТОМ ====================
+def escape_markdown_v2(text: str) -> str:
+    """
+    Экранирует спецсимволы для Telegram MarkdownV2.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    protected_blocks = {}
+    block_counter = 0
+    
+    def create_protector(name):
+        nonlocal block_counter
+        def protector(match):
+            nonlocal block_counter
+            block_id = f"__{name}_{block_counter}__"
+            protected_blocks[block_id] = match.group(0)
+            block_counter += 1
+            return block_id
+        return protector
+    
+    protectors = {
+        'CODE_BLOCK': create_protector('CODE_BLOCK'),
+        'INLINE_CODE': create_protector('INLINE_CODE'),
+        'LINK': create_protector('LINK'),
+        'BOLD': create_protector('BOLD'),
+        'UNDERLINE': create_protector('UNDERLINE'),
+        'ITALIC': create_protector('ITALIC')
+    }
+    
+    # Защищаем блоки форматирования
+    text = re.sub(r'```[\s\S]*?```', protectors['CODE_BLOCK'], text)
+    text = re.sub(r'`[^`\n]+`', protectors['INLINE_CODE'], text)
+    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', protectors['LINK'], text)
+    text = re.sub(r'\*\*([^*]+)\*\*', protectors['BOLD'], text)
+    text = re.sub(r'__([^_]+)__', protectors['UNDERLINE'], text)
+    text = re.sub(r'[_*]([^_*\n]+)[_*]', protectors['ITALIC'], text)
+    
+    # Экранируем опасные символы
+    for char in escape_chars:
+        text = text.replace(char, '\\' + char)
+    
+    # Восстанавливаем защищенные блоки
+    for block_id, original in protected_blocks.items():
+        text = text.replace(block_id, original)
+    
+    return text
+
 def load_post_for_hour(target_hour: int) -> str:
     """
     Загружает пост для указанного часа из файла с текущей датой.
-    
-    Args:
-        target_hour: Час для загрузки (по МСК)
-        
-    Returns:
-        Текст поста или пустая строка
     """
     now = datetime.now()
     filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
@@ -544,8 +397,8 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
             post_text = post_text[:4000] + "\n\n..."
             logger.warning(f"Пост для {moscow_hour}:00 обрезан до 4000 символов")
         
-        # Форматируем текст с использованием markdown2
-        formatted_text = format_text_for_telegram(post_text, parse_mode="HTML")
+        # Подготавливаем текст для отправки
+        safe_text = escape_markdown_v2(post_text)
         
         # Создаем уникальное имя файла для изображения
         image_filename = f"post_{now.day:02d}_{now.month:02d}_{moscow_hour:02d}.jpg"
@@ -560,11 +413,11 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_photo(
                         chat_id=CHANNEL,
                         photo=photo,
-                        caption=formatted_text,
-                        parse_mode="HTML",
+                        caption=safe_text,
+                        parse_mode="MarkdownV2",
                         disable_notification=False
                     )
-                logger.info(f"✅ Пост с изображением опубликован в {moscow_hour}:00 МСК")
+                logger.info(f"ߖݯ؏ Пост с изображением опубликован в {moscow_hour}:00 МСК")
                 return
             except Exception as e:
                 logger.error(f"⚠️ Не удалось отправить изображение: {e}")
@@ -573,8 +426,8 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
         # 2. Если изображение не создалось, отправляем только текст
         await context.bot.send_message(
             chat_id=CHANNEL,
-            text=formatted_text,
-            parse_mode="HTML",
+            text=safe_text,
+            parse_mode="MarkdownV2",
             disable_web_page_preview=True,
             disable_notification=False
         )
@@ -599,42 +452,178 @@ async def cmd_test(update, context):
         
         created_image = create_post_image(theme, month_ru, day, image_path)
         
-        # Тестовый текст с Markdown форматированием
-        test_text = """# 📅 Тестовый пост с изображением
+        test_text = (
+            "*Тестовый пост с изображением*\n\n"
+            "Это тестовое сообщение для проверки работы бота.\n"
+            "Изображение создано автоматически.\n\n"
+            "**Поддерживаемое форматирование:**\n"
+            "- *Курсив*\n"
+            "- **Жирный текст**\n"
+            "- `Встроенный код`\n"
+            "- [Ссылка на Google](https://google.com)"
+        )
+        
+        safe_text = escape_markdown_v2(test_text)
+        
+        if created_image and os.path.exists(created_image):
+            with open(created_image, 'rb') as photo:
+                await context.bot.send_photo(
+                    chat_id=CHANNEL,
+                    photo=photo,
+                    caption=safe_text,
+                    parse_mode="MarkdownV2"
+                )
+            message = "✅ Тестовый пост с изображением отправлен в канал!"
+        else:
+            await context.bot.send_message(
+                chat_id=CHANNEL,
+                text=safe_text,
+                parse_mode="MarkdownV2"
+            )
+            message = "✅ Тестовый пост отправлен (без изображения)!"
+        
+        await update.message.reply_text(f"{message}\nПроверьте: {CHANNEL}")
+        
+    except Exception as e:
+        error_msg = f"❌ Ошибка при отправке тестового поста: {e}"
+        logger.error(error_msg)
+        await update.message.reply_text(error_msg)
 
-Это тестовое сообщение для проверки работы бота с **Markdown2** форматированием.
+async def cmd_start(update, context):
+    """
+    Команда /start - приветственное сообщение
+    """
+    welcome_text = (
+        "ߤ֠*Бот Народный Календарь*\n\n"
+        "Я публикую посты в канал по расписанию *с автоматической генерацией изображений*.\n\n"
+        "*Формат изображения:*\n"
+        "• Месяц (черный)\n"
+        "• Черта\n"
+        "• Дата (красный, крупно)\n"
+        "• Черта\n"
+        "• Тема поста (черный)\n\n"
+        "*Команды:*\n"
+        "/start - это сообщение\n"
+        "/test - отправить тестовый пост с изображением\n"
+        "/status - информация о состоянии бота\n\n"
+        f"Канал: {CHANNEL}\n"
+        f"Часы публикации (МСК): {', '.join(map(str, POST_HOURS))}"
+    )
+    
+    await update.message.reply_text(
+        escape_markdown_v2(welcome_text),
+        parse_mode="MarkdownV2"
+    )
 
-## 🎨 Поддерживаемые возможности:
+async def cmd_status(update, context):
+    """
+    Команда /status - информация о состоянии бота
+    """
+    now = datetime.now()
+    utc_hour = now.hour
+    moscow_hour = (utc_hour + 3) % 24
+    
+    # Проверяем наличие необходимых файлов и папок
+    checks = {
+        "Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
+        "Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
+        "Папка с постами": os.path.exists(POSTS_DIR),
+        "Папка для изображений": os.path.exists(GENERATED_DIR),
+    }
+    
+    check_results = "\n".join([
+        f"{'✅' if status else '❌'} {name}"
+        for name, status in checks.items()
+    ])
+    
+    # Проверяем наличие файла на сегодня
+    filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
+    file_exists = os.path.exists(filename)
+    
+    status_text = (
+        f"ߓʠ*Статус бота*\n\n"
+        f"• *Время:* {now.strftime('%H:%M:%S')}\n"
+        f"• *Дата:* {now.strftime('%d.%m.%Y')}\n"
+        f"• *Час МСК:* {moscow_hour}\n"
+        f"• *Файл на сегодня:* {'✅' if file_exists else '❌'} {filename}\n"
+        f"• *Следующий пост:* {'Скоро' if moscow_hour in POST_HOURS else 'Не сегодня'}\n\n"
+        f"*Проверка файлов:*\n{check_results}\n\n"
+        f"_Бот работает в режиме MarkdownV2 с генерацией изображений_"
+    )
+    
+    await update.message.reply_text(
+        escape_markdown_v2(status_text),
+        parse_mode="MarkdownV2"
+    )
 
-### 1. Заголовки разных уровней
-# Заголовок 1 уровня
-## Заголовок 2 уровня
-### Заголовок 3 уровня
+# ==================== ЗАПУСК БОТА ====================
+def main():
+    """Основная функция запуска бота"""
+    
+    # Проверка обязательных переменных
+    if not BOT_TOKEN:
+        logger.error("❌ ОШИБКА: BOT_TOKEN не задан!")
+        logger.error("Задайте переменную окружения: export BOT_TOKEN='ваш_токен'")
+        return
+    
+    if not CHANNEL:
+        logger.error("❌ ОШИБКА: CHANNEL не задан!")
+        return
+    
+    # Создаем необходимые директории
+    directories = [POSTS_DIR, ASSETS_DIR, FONTS_DIR, GENERATED_DIR]
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            logger.info(f"ߓ`Создана директория: {directory}")
+    
+    # Проверяем наличие критических файлов
+    if not os.path.exists(BACKGROUND_FILE):
+        logger.warning(f"⚠️ Фоновое изображение не найдено: {BACKGROUND_FILE}")
+        logger.warning("Поместите файл fon.jpg (1600x1124) в папку assets/")
+    
+    if not os.path.exists(FONT_FILE):
+        logger.warning(f"⚠️ Шрифт не найден: {FONT_FILE}")
+        logger.warning("Поместите файл GOST_A.TTF в папку fonts/")
+    
+    # Инициализация приложения
+    try:
+        app = Application.builder().token(BOT_TOKEN).build()
+        logger.info("✅ Приложение инициализировано")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации бота: {e}")
+        return
+    
+    # Регистрация команд
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("test", cmd_test))
+    app.add_handler(CommandHandler("status", cmd_status))
+    logger.info("✅ Команды зарегистрированы")
+    
+    # Настройка расписания
+    job_added = 0
+    for hour_msk in POST_HOURS:
+        utc_hour = (hour_msk - 3) % 24
+        app.job_queue.run_daily(
+            send_scheduled_post,
+            time(hour=utc_hour, minute=0, second=10),
+            name=f"post_{hour_msk:02d}"
+        )
+        job_added += 1
+    
+    logger.info(f"✅ Настроено {job_added} заданий по расписанию")
+    logger.info(f"ߓ Бот будет публиковать в канал: {CHANNEL}")
+    logger.info(f"ߕРЧасы публикации (МСК): {POST_HOURS}")
+    logger.info("ߎȠРежим: генерация изображений + MarkdownV2")
+    logger.info("=" * 50)
+    
+    # Запуск бота
+    try:
+        app.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        logger.info("⏹️ Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
 
-### 2. Форматирование текста
-- *Курсив* или _курсив_
-- **Жирный текст** или __жирный текст__
-- ~~Зачеркнутый текст~~
-- `встроенный код`
-- [Ссылка на Google](https://google.com)
-- <u>Подчеркнутый текст</u>
-
-### 3. Списки
-#### Маркированный список:
-* Элемент 1
-* Элемент 2
-  * Вложенный элемент
-* Элемент 3
-
-#### Нумерованный список:
-1. Первый пункт
-2. Второй пункт
-   1. Подпункт
-   2. Еще подпункт
-3. Третий пункт
-
-### 4. Блоки кода
-```python
-def hello_world():
-    print("Привет, мир!")
-    return True
+if __name__ == "__main__":
+    main()
