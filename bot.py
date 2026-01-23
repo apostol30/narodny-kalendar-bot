@@ -374,7 +374,9 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"✅ Текстовый пост опубликован в {moscow_hour}:00 МСК")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при публикации: {e}", exc_info=True)
-        async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ←←← Обрати внимание: нет отступа! Функция на глобальном уровне.
+async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now()
         month_ru = MONTHS_RU[now.month - 1]
