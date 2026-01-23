@@ -374,16 +374,18 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"✅ Текстовый пост опубликован в {moscow_hour}:00 МСК")
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при публикации: {e}", exc_info=True)
-
-async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now()
         month_ru = MONTHS_RU[now.month - 1]
         day = now.strftime("%d")
         theme = "Тестовый пост для проверки генерации изображений"
+        
         image_filename = f"test_{int(datetime.now().timestamp())}.jpg"
         image_path = os.path.join(GENERATED_DIR, image_filename)
+        
         created_image = create_post_image(theme, month_ru, day, image_path)
+        
         test_text = """# 📅 Тестовый пост с изображением
 
 Это тестовое сообщение для проверки работы бота с **Markdown2** форматированием.
@@ -431,30 +433,37 @@ def hello_world():
 Проверьте канал: Народный календарь
 """
 formatted_text = format_text_for_telegram(test_text, parse_mode="HTML")
-if created_image and os.path.exists(created_image):
-with open(created_image, 'rb') as photo:
-await context.bot.send_photo(
-chat_id=CHANNEL,
-photo=photo,
-caption=formatted_text,
-parse_mode="HTML"
-)
-message = "✅ Тестовый пост с изображением отправлен в канал!"
-else:
-await context.bot.send_message(
-chat_id=CHANNEL,
-text=formatted_text,
-parse_mode="HTML"
-)
-message = "✅ Тестовый пост отправлен (без изображения)!"
-await update.message.reply_text(f"{message}\nПроверьте: {CHANNEL}")
-except Exception as e:
-error_msg = f"❌ Ошибка при отправке тестового поста: {e}"
-logger.error(error_msg)
-await update.message.reply_text(error_msg)
+    if created_image and os.path.exists(created_image):
+        with open(created_image, 'rb') as photo:
+            await context.bot.send_photo(
+                chat_id=CHANNEL,
+                photo=photo,
+                caption=formatted_text,
+                parse_mode="HTML"
+            )
+        message = "✅ Тестовый пост с изображением отправлен в канал!"
+    else:
+        await context.bot.send_message(
+            chat_id=CHANNEL,
+            text=formatted_text,
+            parse_mode="HTML"
+        )
+        message = "✅ Тестовый пост отправлен (без изображения)!"
+    
+    await update.message.reply_text(f"{message}\nПроверьте: {CHANNEL}")
 
+except Exception as e:
+    error_msg = f"❌ Ошибка при отправке тестового поста: {e}"
+    logger.error(error_msg)
+    await update.message.reply_text(error_msg)
+
+---
+
+### 🔹 Часть 3 из 4
+
+```python
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-welcome_text = """# 📅 Бот Народный Календарь
+    welcome_text = """# 📅 Бот Народный Календарь
 
 Я автоматически публикую посты в канал по расписанию с генерацией изображений и Markdown форматированием.
 
@@ -466,18 +475,18 @@ welcome_text = """# 📅 Бот Народный Календарь
 Тема поста (черный текст)
 
 📝 Поддерживаемое форматирование в постах:
+- Курсив или курсив
+- Жирный текст или жирный текст
+- ~~Зачеркнутый текст~~
+- <u>Подчеркнутый текст</u>
+- `встроенный код`
+- Заголовки (#, ##, ###)
+- Списки
+- Таблицы
+- Блоки кода
+- Цитаты
+- Ссылки
 
-Курсив или курсив
-Жирный текст или жирный текст
-Зачеркнутый текст
-<u>Подчеркнутый текст</u>
-встроенный код
-Заголовки (#, ##, ###)
-Списки
-Таблицы
-Блоки кода
-Цитаты
-Ссылки
 🎯 Команды бота:
 /start - это приветственное сообщение
 /test - отправить тестовый пост с изображением
@@ -489,24 +498,24 @@ welcome_text = """# 📅 Бот Народный Календарь
 Форматирование: HTML (через Markdown2)
 Генерация изображений: Включена
 """
-formatted_text = format_text_for_telegram(welcome_text, parse_mode="HTML")
-await update.message.reply_text(formatted_text, parse_mode="HTML")
+    formatted_text = format_text_for_telegram(welcome_text, parse_mode="HTML")
+    await update.message.reply_text(formatted_text, parse_mode="HTML")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-now = datetime.now()
-utc_hour = now.hour
-moscow_hour = (utc_hour + 3) % 24
-checks = {
-"Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
-"Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
-"Папка с постами": os.path.exists(POSTS_DIR),
-"Папка для изображений": os.path.exists(GENERATED_DIR),
-}
-check_results = "\n".join([f"{'✅' if status else '❌'} {name}" for name, status in checks.items()])
-filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
-file_exists = os.path.exists(filename)
-post_files = [f for f in os.listdir(POSTS_DIR) if f.endswith('.txt')] if os.path.exists(POSTS_DIR) else []
-status_text = f"""# 📊 Статус бота
+    now = datetime.now()
+    utc_hour = now.hour
+    moscow_hour = (utc_hour + 3) % 24
+    checks = {
+        "Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
+        "Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
+        "Папка с постами": os.path.exists(POSTS_DIR),
+        "Папка для изображений": os.path.exists(GENERATED_DIR),
+    }
+    check_results = "\n".join([f"{'✅' if status else '❌'} {name}" for name, status in checks.items()])
+    filename = f"{POSTS_DIR}/{now.day:02d}-{now.month:02d}.txt"
+    file_exists = os.path.exists(filename)
+    post_files = [f for f in os.listdir(POSTS_DIR) if f.endswith('.txt')] if os.path.exists(POSTS_DIR) else []
+    status_text = f"""# 📊 Статус бота
 📅 Текущее состояние:
 Время сервера: {now.strftime('%H:%M:%S')} UTC
 Время МСК: {(utc_hour + 3) % 24}:{now.strftime('%M:%S')}
@@ -529,60 +538,59 @@ status_text = f"""# 📊 Статус бота
 Папка с постами: {POSTS_DIR}/
 Папка изображений: {GENERATED_DIR}/
 """
-formatted_text = format_text_for_telegram(status_text, parse_mode="HTML")
-await update.message.reply_text(formatted_text, parse_mode="HTML")
-
-==================== ЗАПУСК БОТА ====================
+    formatted_text = format_text_for_telegram(status_text, parse_mode="HTML")
+    await update.message.reply_text(formatted_text, parse_mode="HTML")
+    # ==================== ЗАПУСК БОТА ====================
 def main():
-if not BOT_TOKEN:
-logger.error("❌ ОШИБКА: BOT_TOKEN не задан!")
-logger.error("Задайте переменную окружения: export BOT_TOKEN='ваш_токен'")
-return
-if not CHANNEL:
-logger.error("❌ ОШИБКА: CHANNEL не задан!")
-return
-directories = [POSTS_DIR, ASSETS_DIR, FONTS_DIR, GENERATED_DIR]
-for directory in directories:
-if not os.path.exists(directory):
-os.makedirs(directory)
-logger.info(f"📁 Создана директория: {directory}")
-if not os.path.exists(BACKGROUND_FILE):
-logger.warning(f"⚠️ Фоновое изображение не найдено: {BACKGROUND_FILE}")
-logger.warning("Поместите файл fon.jpg (1600x1124) в папку assets/")
-if not os.path.exists(FONT_FILE):
-logger.warning(f"⚠️ Шрифт не найден: {FONT_FILE}")
-logger.warning("Поместите файл GOST_A.TTF в папку fonts/")
-try:
-app = Application.builder().token(BOT_TOKEN).build()
-logger.info("✅ Приложение инициализировано")
-except Exception as e:
-logger.error(f"❌ Ошибка инициализации бота: {e}")
-return
-app.add_handler(CommandHandler("start", cmd_start))
-app.add_handler(CommandHandler("test", cmd_test))
-app.add_handler(CommandHandler("status", cmd_status))
-logger.info("✅ Команды зарегистрированы")
-job_added = 0
-for hour_msk in POST_HOURS:
-utc_hour = (hour_msk - 3) % 24
-app.job_queue.run_daily(
-send_scheduled_post,
-time(hour=utc_hour, minute=0, second=10),
-name=f"post_{hour_msk:02d}"
-)
-job_added += 1
-logger.info(f"✅ Настроено {job_added} заданий по расписанию")
-logger.info(f"📢 Бот будет публиковать в канал: {CHANNEL}")
-logger.info(f"⏰ Часы публикации (МСК): {POST_HOURS}")
-logger.info("🎨 Режим: генерация изображений + HTML форматирование (через Markdown2)")
-logger.info("=" * 50)
-logger.info("🚀 Бот запущен и готов к работе!")
-try:
-app.run_polling(drop_pending_updates=True)
-except KeyboardInterrupt:
-logger.info("⏹️ Бот остановлен пользователем")
-except Exception as e:
-logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
+    if not BOT_TOKEN:
+        logger.error("❌ ОШИБКА: BOT_TOKEN не задан!")
+        logger.error("Задайте переменную окружения: export BOT_TOKEN='ваш_токен'")
+        return
+    if not CHANNEL:
+        logger.error("❌ ОШИБКА: CHANNEL не задан!")
+        return
+    directories = [POSTS_DIR, ASSETS_DIR, FONTS_DIR, GENERATED_DIR]
+    for directory in directories:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            logger.info(f"📁 Создана директория: {directory}")
+    if not os.path.exists(BACKGROUND_FILE):
+        logger.warning(f"⚠️ Фоновое изображение не найдено: {BACKGROUND_FILE}")
+        logger.warning("Поместите файл fon.jpg (1600x1124) в папку assets/")
+    if not os.path.exists(FONT_FILE):
+        logger.warning(f"⚠️ Шрифт не найден: {FONT_FILE}")
+        logger.warning("Поместите файл GOST_A.TTF в папку fonts/")
+    try:
+        app = Application.builder().token(BOT_TOKEN).build()
+        logger.info("✅ Приложение инициализировано")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации бота: {e}")
+        return
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("test", cmd_test))
+    app.add_handler(CommandHandler("status", cmd_status))
+    logger.info("✅ Команды зарегистрированы")
+    job_added = 0
+    for hour_msk in POST_HOURS:
+        utc_hour = (hour_msk - 3) % 24
+        app.job_queue.run_daily(
+            send_scheduled_post,
+            time(hour=utc_hour, minute=0, second=10),
+            name=f"post_{hour_msk:02d}"
+        )
+        job_added += 1
+    logger.info(f"✅ Настроено {job_added} заданий по расписанию")
+    logger.info(f"📢 Бот будет публиковать в канал: {CHANNEL}")
+    logger.info(f"⏰ Часы публикации (МСК): {POST_HOURS}")
+    logger.info("🎨 Режим: генерация изображений + HTML форматирование (через Markdown2)")
+    logger.info("=" * 50)
+    logger.info("🚀 Бот запущен и готов к работе!")
+    try:
+        app.run_polling(drop_pending_updates=True)
+    except KeyboardInterrupt:
+        logger.info("⏹️ Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
 
-if name == "main":
-main()
+if __name__ == "__main__":
+    main()
