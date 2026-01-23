@@ -9,6 +9,7 @@ import logging
 import re
 import markdown2
 from datetime import datetime, time
+from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from PIL import Image, ImageDraw, ImageFont
 
@@ -64,9 +65,9 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
             u"\U0001F1E0-\U0001F1FF"
             u"\U00002500-\U00002BEF"
             u"\U00002702-\U000027B0"
-            u"\U000024C2-\U0001F251"
+            u"\U000024C2-\U001F251"
             u"\U0001f926-\U0001f937"
-            u"\U00010000-\U0010ffff"
+            u"\U00010000-\U010ffff"
             u"\u2640-\u2642"
             u"\u2600-\u2B55"
             u"\u200d"
@@ -306,7 +307,8 @@ def format_text_for_telegram(text: str, parse_mode: str = "HTML") -> str:
             return telegram_text
         except Exception as e:
             logger.error(f"Ошибка форматирования текста: {e}")
-            return escape_html_for_telegram(text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'))
+            escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            return escape_html_for_telegram(escaped)
     
     elif parse_mode == "MarkdownV2":
         escape_chars = r'_*[]()~`>#+-=|{}.!'
@@ -421,7 +423,7 @@ async def send_scheduled_post(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ Критическая ошибка при публикации: {e}", exc_info=True)
 
-async def cmd_test(update, context):
+async def cmd_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         now = datetime.now()
         month_ru = MONTHS_RU[now.month - 1]
@@ -471,21 +473,7 @@ async def cmd_test(update, context):
 def hello_world():
     print("Привет, мир!")
     return True
-Важно: Бот автоматически генерирует изображения для каждого поста!
-
-📊 Статистика:
-
-Часы публикации: 6:00 - 20:00 МСК
-
-Форматирование: HTML через Markdown2
-
-Изображения: автоматическая генерация
-
-Проверьте канал: Народный календарь
-"""
-    formatted_text = format_text_for_telegram(test_text, parse_mode="HTML")
-    
-    if created_image and os.path.exists(created_image):
+            if created_image and os.path.exists(created_image):
         with open(created_image, 'rb') as photo:
             await context.bot.send_photo(
                 chat_id=CHANNEL,
@@ -503,81 +491,12 @@ def hello_world():
         message = "✅ Тестовый пост отправлен (без изображения)!"
     
     await update.message.reply_text(f"{message}\nПроверьте: {CHANNEL}")
-    
+
 except Exception as e:
     error_msg = f"❌ Ошибка при отправке тестового поста: {e}"
     logger.error(error_msg)
     await update.message.reply_text(error_msg)
-async def cmd_start(update, context):
-welcome_text = """# 📅 Бот Народный Календарь
-
-Я автоматически публикую посты в канал по расписанию с генерацией изображений и Markdown форматированием.
-
-🖼️ Формат изображения:
-Месяц (черный текст)
-
-Черта разделитель
-
-Дата (красный текст, крупно)
-
-Черта разделитель
-
-Тема поста (черный текст)
-
-📝 Поддерживаемое форматирование в постах:
-Базовое форматирование:
-Курсив или курсив
-
-Жирный текст или жирный текст
-
-~~Зачеркнутый текст~~
-
-<u>Подчеркнутый текст</u>
-
-встроенный код
-
-Структура поста:
-Заголовки (#, ##, ###)
-
-Списки (нумерованные и маркированные)
-
-Таблицы
-
-Блоки кода (код)
-
-Цитаты (> текст)
-
-Ссылки
-
-🎯 Команды бота:
-/start - это приветственное сообщение
-
-/test - отправить тестовый пост с изображением
-
-/status - информация о состоянии бота
-
-⚙️ Настройки:
-Канал: Народный календарь
-
-Часы публикации (МСК): 6:00 - 20:00 каждый час
-
-Форматирование: HTML (через Markdown2)
-
-Генерация изображений: Включена
-"""
-
-formatted_text = format_text_for_telegram(welcome_text, parse_mode="HTML")
-
-await update.message.reply_text(
-formatted_text,
-parse_mode="HTML"
-)
-
-async def cmd_status(update, context):
-now = datetime.now()
-utc_hour = now.hour
-moscow_hour = (utc_hour + 3) % 24
-checks = {
+        checks = {
     "Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
     "Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
     "Папка с постами": os.path.exists(POSTS_DIR),
@@ -597,53 +516,6 @@ if os.path.exists(POSTS_DIR):
     post_files = [f for f in os.listdir(POSTS_DIR) if f.endswith('.txt')]
 
 status_text = f"""# 📊 Статус бота
-📅 Текущее состояние:
-Время сервера: {now.strftime('%H:%M:%S')} UTC
-
-Время МСК: {(utc_hour + 3) % 24}:{now.strftime('%M:%S')}
-
-Дата: {now.strftime('%d.%m.%Y')}
-
-Час МСК для публикации: {moscow_hour}
-
-Файл на сегодня: {'✅' if file_exists else '❌'} {filename}
-
-Следующий пост: {'✅ Скоро' if moscow_hour in POST_HOURS else '⏸️ Не сегодня'}
-
-📁 Проверка файлов:
-{check_results}
-
-📈 Статистика:
-Файлов с постами: {len(post_files)}
-
-Часов публикации: {len(POST_HOURS)} (с {POST_HOURS[0]}:00 до {POST_HOURS[-1]}:00 МСК)
-
-Режим форматирования: HTML (через Markdown2)
-
-Генерация изображений: {'✅ Включена' if os.path.exists(BACKGROUND_FILE) and os.path.exists(FONT_FILE) else '❌ Выключена'}
-
-⚙️ Конфигурация:
-Канал: {CHANNEL}
-
-Папка с постами: {POSTS_DIR}/
-
-Папка изображений: {GENERATED_DIR}/
-"""
-
-formatted_text = format_text_for_telegram(status_text, parse_mode="HTML")
-
-await update.message.reply_text(
-formatted_text,
-parse_mode="HTML"
-)
-
-==================== ЗАПУСК БОТА ====================
-def main():
-if not BOT_TOKEN:
-logger.error("❌ ОШИБКА: BOT_TOKEN не задан!")
-logger.error("Задайте переменную окружения: export BOT_TOKEN='ваш_токен'")
-return
-
 if not CHANNEL:
     logger.error("❌ ОШИБКА: CHANNEL не задан!")
     return
@@ -697,5 +569,5 @@ except KeyboardInterrupt:
     logger.info("⏹️ Бот остановлен пользователем")
 except Exception as e:
     logger.error(f"❌ Критическая ошибка: {e}", exc_info=True)
-if name == "main":
+    if name == "main":
 main()
