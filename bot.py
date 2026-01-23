@@ -483,8 +483,6 @@ def hello_world():
 
 Проверьте канал: Народный календарь
 """
-
-text
     formatted_text = format_text_for_telegram(test_text, parse_mode="HTML")
     
     if created_image and os.path.exists(created_image):
@@ -579,8 +577,6 @@ async def cmd_status(update, context):
 now = datetime.now()
 utc_hour = now.hour
 moscow_hour = (utc_hour + 3) % 24
-
-text
 checks = {
     "Фон (fon.jpg)": os.path.exists(BACKGROUND_FILE),
     "Шрифт (GOST_A.TTF)": os.path.exists(FONT_FILE),
@@ -648,7 +644,6 @@ logger.error("❌ ОШИБКА: BOT_TOKEN не задан!")
 logger.error("Задайте переменную окружения: export BOT_TOKEN='ваш_токен'")
 return
 
-text
 if not CHANNEL:
     logger.error("❌ ОШИБКА: CHANNEL не задан!")
     return
