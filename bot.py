@@ -54,44 +54,37 @@ MARKDOWN_EXTRAS = [
 
 # ==================== ФУНКЦИИ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ ====================
 def create_post_image(theme: str, month: str, day: str, output_path: str) -> str:
-    def remove_emoji_and_special(text):
+    import re
+
+    # Простая функция удаления эмодзи (без риска Unicode escape)
+    def remove_emoji(text: str) -> str:
         if not text:
             return ""
+        # Сырая строка для безопасного regex
         emoji_pattern = re.compile(
-            "["
-            u"\U0001F600-\U0001F64F"
-            u"\U0001F300-\U0001F5FF"
-            u"\U0001F680-\U0001F6FF"
-            u"\U0001F1E0-\U0001F1FF"
-            u"\U00002500-\U00002BEF"
-            u"\U00002702-\U000027B0"
-            u"\U000024C2-\U001F251"
-            u"\U0001f926-\U0001f937"
-            u"\U00010000-\U010ffff"
-            u"\u2640-\u2642"
-            u"\u2600-\u2B55"
-            u"\u200d"
-            u"\u23cf"
-            u"\u23e9"
-            u"\u231a"
-            u"\ufe0f"
-            u"\u3030"
-            u"\u00A9\u00AE\u2122"
-            "]+",
-            flags=re.UNICODE,
+            r"["
+            r"\U0001F600-\U0001F64F"  # emoticons
+            r"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            r"\U0001F680-\U0001F6FF"  # transport & map symbols
+            r"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            r"\U00002702-\U000027B0"
+            r"\U000024C2-\U001F251"
+            r"\U0001f926-\U0001f937"
+            r"\U00010000-\U0010ffff"
+            r"\u2640-\u2642"
+            r"\u2600-\u2B55"
+            r"\u200d"
+            r"\u23cf"
+            r"\u23e9"
+            r"\u231a"
+            r"\ufe0f"
+            r"\u3030"
+            r"\u00A9\u00AE\u2122"
+            r"]+",
+            flags=re.UNICODE
         )
-        text = emoji_pattern.sub(r'', text)
-        allowed_chars_pattern = re.compile(
-            r'[^'
-            r'a-zA-Zа-яА-ЯёЁ'
-            r'0-9'
-            r'\s'
-            r'.,:;!?\-–—()\[\]{}«»"\''
-            r']+'
-        )
-        text = allowed_chars_pattern.sub(r'', text)
-        return text.strip()
-    
+        return emoji_pattern.sub(r'', text).strip()
+
     try:
         if not os.path.exists(BACKGROUND_FILE):
             logger.error(f"Фоновое изображение не найдено: {BACKGROUND_FILE}")
@@ -124,8 +117,9 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
                 text_width = bbox[2] - bbox[0]
             return (img_width - text_width) // 2
         
-        theme_cleaned = remove_emoji_and_special(theme)
-        theme = theme_cleaned
+        theme_cleaned = remove_emoji(theme)
+        if not theme_cleaned:
+            theme_cleaned = "Народный календарь"
         
         month_x = get_center_x(month, font_month)
         month_y = start_y
@@ -155,7 +149,7 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
         theme_lines = []
         max_line_width = img_width * 0.6
         
-        words = theme.split()
+        words = theme_cleaned.split()
         current_line = ""
         
         for word in words:
@@ -188,24 +182,6 @@ def create_post_image(theme: str, month: str, day: str, output_path: str) -> str
     except Exception as e:
         logger.error(f"❌ Ошибка при создании изображения: {e}", exc_info=True)
         return None
-
-def extract_theme_from_post(post_text: str) -> str:
-    if not post_text:
-        return "Народный календарь"
-    
-    lines = post_text.strip().split('\n')
-    first_line = lines[0] if lines else ""
-    
-    first_line = re.sub(r'\[\d{1,2}:\d{2}\]', '', first_line).strip()
-    
-    if not first_line and len(lines) > 1:
-        first_line = lines[1].strip()
-    
-    if len(first_line) > 100:
-        first_line = first_line[:97] + "..."
-    
-    return first_line if first_line else "Народный календарь"
-
 # ==================== ФУНКЦИИ ФОРМАТИРОВАНИЯ ТЕКСТА ====================
 def convert_markdown_to_html(text: str) -> str:
     if not text:
